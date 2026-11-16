@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Ember Yard — Tactical FPS</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1611; font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
+  #game-canvas { display: block; width: 100%; height: 100%; }
+  .hidden { display: none !important; }
+  /* Crosshair */
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; z-index: 5; --gap: 8px; }
+  #crosshair .l { position: absolute; background: #fff; box-shadow: 0 0 2px #000; }
+  #crosshair .t { left: -1px; top: calc(-1 * var(--gap) - 8px); width: 2px; height: 8px; }
+  #crosshair .b { left: -1px; top: var(--gap); width: 2px; height: 8px; }
+  #crosshair .lf { top: -1px; left: calc(-1 * var(--gap) - 8px); height: 2px; width: 8px; }
+  #crosshair .rt { top: -1px; left: var(--gap); height: 2px; width: 8px; }
+  #crosshair .dot { left: -1px; top: -1px; width: 2px; height: 2px; }
+  #hitmarker { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; opacity: 0; pointer-events: none; z-index: 6; }
+  #hitmarker::before, #hitmarker::after { content: ''; position: absolute; left: 10px; top: 0; width: 2px; height: 22px; background: #fff; }
+  #hitmarker::before { transform: rotate(45deg); }
+  #hitmarker::after { transform: rotate(-45deg); }
+  #hitmarker.kill::before, #hitmarker.kill::after { background: #ff4040; }
+  /* HUD corners */
+  #hud-top { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; align-items: center; z-index: 5; font-weight: 700; text-shadow: 0 1px 3px #000; }
+  #timer { font-size: 26px; background: rgba(0,0,0,.45); padding: 4px 14px; border-radius: 6px; }
+  #score { font-size: 22px; background: rgba(0,0,0,.45); padding: 4px 14px; border-radius: 6px; }
+  #score .e { color: #ff7a1a; } #score .a { color: #7d9bb5; }
+  #bomb-timer { display: none; color: #ff5040; background: rgba(0,0,0,.55); padding: 4px 12px; border-radius: 6px; font-size: 18px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  #hud-bl { position: fixed; left: 18px; bottom: 16px; z-index: 5; text-shadow: 0 1px 3px #000; }
+  #health-num { font-size: 34px; font-weight: 800; }
+  #health-bar-wrap { width: 220px; height: 10px; background: rgba(0,0,0,.55); border-radius: 5px; overflow: hidden; margin-top: 2px; }
+  #health-bar { height: 100%; width: 100%; background: #7ec850; }
+  #armor { font-size: 13px; color: #8fd0ff; margin-top: 3px; }
+  #hud-br { position: fixed; right: 18px; bottom: 16px; z-index: 5; text-align: right; text-shadow: 0 1px 3px #000; }
+  #weapon-name { font-size: 14px; color: #f0a830; font-weight: 700; }
+  #ammo-mag { font-size: 36px; font-weight: 800; }
+  #ammo-reserve { font-size: 18px; color: #ccc; }
+  #money { font-size: 20px; font-weight: 700; color: #7ec850; margin-top: 2px; }
+  #grenades { font-size: 13px; color: #ccc; }
+  #killfeed { position: fixed; right: 18px; top: 14px; z-index: 5; text-align: right; font-size: 13px; text-shadow: 0 1px 3px #000; }
+  .kf-item { background: rgba(0,0,0,.45); padding: 3px 8px; border-radius: 4px; margin-bottom: 4px; }
+  #center-msg { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); font-size: 28px; font-weight: 800; text-shadow: 0 2px 6px #000; opacity: 0; transition: opacity .3s; z-index: 5; text-align: center; }
+  #hint { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); font-size: 15px; color: #ffd27a; text-shadow: 0 1px 3px #000; z-index: 5; }
+  #plant-bar { display: none; position: fixed; left: 50%; bottom: 150px; transform: translateX(-50%); width: 260px; z-index: 5; text-align: center; }
+  #plant-label { font-size: 14px; margin-bottom: 4px; text-shadow: 0 1px 3px #000; }
+  #plant-fill-wrap { height: 8px; background: rgba(0,0,0,.6); border-radius: 4px; overflow: hidden; }
+  #plant-fill { height: 100%; width: 0%; background: #f0a830; }
+  /* Menus */
+  .menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(10,8,6,.82); z-index: 10; text-align: center; padding: 20px; }
+  .menu h1 { font-size: 52px; color: #f0a830; letter-spacing: 4px; }
+  .menu h2 { font-size: 18px; color: #7d9bb5; margin: 6px 0 18px; font-weight: 400; }
+  .menu p { max-width: 560px; line-height: 1.6; color: #ddd; font-size: 15px; }
+  .menu .keys { margin: 14px 0; font-size: 14px; color: #bbb; line-height: 1.9; }
+  .menu .keys b { color: #fff; background: #333; padding: 1px 7px; border-radius: 4px; }
+  button { cursor: pointer; font-size: 18px; font-weight: 700; color: #111; background: #f0a830; border: none; padding: 12px 34px; border-radius: 8px; margin-top: 10px; }
+  button:hover { background: #ffc65c; }
+  button.ghost { background: #444; color: #fff; font-size: 14px; padding: 8px 20px; }
+  #buy-menu { display: none; position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); background: rgba(12,10,8,.92); border: 1px solid #f0a830; border-radius: 10px; padding: 20px 26px; z-index: 8; width: 340px; }
+  #buy-menu h3 { color: #f0a830; margin-bottom: 4px; }
+  #buy-menu .sub { font-size: 13px; color: #aaa; margin-bottom: 12px; }
+  .buy-row { display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid #333; font-size: 15px; }
+  .buy-row .key { color: #f0a830; font-weight: 700; margin-right: 8px; }
+  .buy-row .price { color: #7ec850; font-weight: 700; }
+  #round-end { display: none; position: fixed; left: 50%; top: 34%; transform: translateX(-50%); background: rgba(0,0,0,.7); padding: 18px 30px; border-radius: 10px; z-index: 8; text-align: center; }
+  #round-end-text { font-size: 22px; font-weight: 800; }
+  #match-end { display: none; }
+</style>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<div id="crosshair"><div class="l t"></div><div class="l b"></div><div class="l lf"></div><div class="l rt"></div><div class="l dot"></div></div>
+<div id="hitmarker"></div>
+
+<div id="hud-top">
+  <div id="timer">1:40</div>
+  <div id="score"><span class="e">Ember 0</span> — <span class="a">0 Ash</span></div>
+  <div id="bomb-timer">BOMB 35s</div>
+</div>
+<div id="killfeed"></div>
+<div id="center-msg"></div>
+<div id="hint"></div>
+<div id="plant-bar"><div id="plant-label"></div><div id="plant-fill-wrap"><div id="plant-fill"></div></div></div>
+
+<div id="hud-bl">
+  <div><span id="health-num">100</span> HP</div>
+  <div id="health-bar-wrap"><div id="health-bar"></div></div>
+  <div id="armor"></div>
+</div>
+<div id="hud-br">
+  <div id="weapon-name">P-12 "Sidekick"</div>
+  <div><span id="ammo-mag">12</span><span id="ammo-reserve">/ 36</span></div>
+  <div id="money">$800</div>
+  <div id="grenades"></div>
+</div>
+
+<div id="buy-menu">
+  <h3>BUY MENU</h3>
+  <div class="sub">Freeze time — <span id="buy-money">$800</span> — press B to close</div>
+  <div class="buy-row"><span><span class="key">[1]</span> VK-7 "Longshot" rifle</span><span class="price" id="buy-longshot">$2700</span></div>
+  <div class="buy-row"><span><span class="key">[2]</span> SK-9 "Scatter" SMG</span><span class="price" id="buy-scatter">$1500</span></div>
+  <div class="buy-row"><span><span class="key">[3]</span> Smoke grenade</span><span class="price" id="buy-grenade">$300</span></div>
+  <div class="buy-row"><span><span class="key">[4]</span> Armor (50 HP)</span><span class="price" id="buy-armor">$650</span></div>
+  <div class="sub" style="margin-top:10px">Switch weapons with 1 / 2 / 3 after buying.</div>
+</div>
+
+<div id="round-end">
+  <div id="round-end-text"></div>
+  <button class="ghost" id="next-round-btn">Next round</button>
+</div>
+
+<div id="start-menu" class="menu">
+  <h1>EMBER YARD</h1>
+  <h2>Tactical FPS — Ember vs Ash · first to 5 rounds</h2>
+  <p>Plant the bomb at Site A (yellow pad, north) or eliminate the Ash team.
+  You carry the bomb: hold <b>E</b> inside Site A to plant, hold <b>E</b> to defuse.
+  Buy weapons with <b>B</b> during the 8-second freeze time.</p>
+  <div class="keys">
+    <b>W A S D</b> move · <b>Mouse</b> aim · <b>Click</b> shoot · <b>R</b> reload<br>
+    <b>Space</b> jump · <b>Ctrl</b> crouch · <b>1/2/3</b> switch weapon<br>
+    <b>B</b> buy menu · <b>G</b> smoke grenade · <b>E</b> plant / defuse · <b>M</b> mute
+  </div>
+  <button id="play-btn">CLICK TO PLAY</button>
+  <p style="margin-top:14px;font-size:13px;color:#888">Best with pointer lock (click the game after starting). Headphones recommended — all audio is synthesized.</p>
+</div>
+
+<div id="match-end" class="menu">
+  <h1>MATCH OVER</h1>
+  <h2 id="match-end-text"></h2>
+  <button id="again-btn">PLAY AGAIN</button>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
