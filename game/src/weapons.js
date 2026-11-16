@@ -155,21 +155,28 @@ export class PlayerWeapons {
     return 'fired';
   }
   // Per-step decay of bloom and recoil.
-  update(dt, moving) {
+  // Stopping to aim pays: moving adds spread, crouching cuts it, and standing
+  // still for a beat settles the aim further.
+  update(dt, moving, crouched, stillTime) {
     const s = this.state;
     s.bloom = Math.max(0, s.bloom - dt * 0.05);
     s.recoilPitch *= Math.pow(0.0001, dt); // fast decay
     s.recoilYaw *= Math.pow(0.0001, dt);
-    this.spreadNow = s.def.spread + s.bloom + (moving ? 0.012 : 0);
+    let sp = s.def.spread + s.bloom + (moving ? 0.012 : 0);
+    if (crouched) sp *= 0.6;
+    if (!moving && stillTime > 0.6) sp *= 0.75;
+    this.spreadNow = sp;
   }
-  // Build a shot direction from the camera with spread + recoil offsets.
+  // Build a shot direction from the camera with spread only. Recoil is
+  // already expressed through the camera kick (main.js adds recoilPitch*0.4
+  // to the view), so adding it here too double-counted it: every bullet
+  // landed ~1 recoil above the crosshair, and a level shot at a head 5 m
+  // away grazed over the top. The crosshair must be where the bullet goes.
   shotDirection(camera) {
     camera.getWorldDirection(_dir);
-    // Recoil offsets rotate the direction slightly (not the look angle itself).
-    const yaw = this.state.recoilYaw, pitch = this.state.recoilPitch;
     const sp = this.spreadNow || this.state.def.spread;
-    const sx = (Math.random() - 0.5) * 2 * sp + yaw;
-    const sy = (Math.random() - 0.5) * 2 * sp + pitch;
+    const sx = (Math.random() - 0.5) * 2 * sp;
+    const sy = (Math.random() - 0.5) * 2 * sp;
     _dir.x += sx; _dir.y += sy; _dir.z += (Math.random() - 0.5) * 2 * sp * 0.2;
     return _dir.normalize().clone();
   }

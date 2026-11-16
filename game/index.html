@@ -29,6 +29,7 @@
   #score { font-size: 22px; background: rgba(0,0,0,.45); padding: 4px 14px; border-radius: 6px; }
   #score .e { color: #ff7a1a; } #score .a { color: #7d9bb5; }
   #bomb-timer { display: none; color: #ff5040; background: rgba(0,0,0,.55); padding: 4px 12px; border-radius: 6px; font-size: 18px; animation: blink 1s steps(2) infinite; }
+  #defuse-warning { display: none; position: fixed; left: 50%; top: 64px; transform: translateX(-50%); color: #ff5040; background: rgba(0,0,0,.6); padding: 6px 16px; border-radius: 6px; font-size: 17px; font-weight: 800; z-index: 5; animation: blink 1s steps(2) infinite; text-shadow: 0 1px 3px #000; }
   @keyframes blink { 50% { opacity: .35; } }
   #hud-bl { position: fixed; left: 18px; bottom: 16px; z-index: 5; text-shadow: 0 1px 3px #000; }
   #health-num { font-size: 34px; font-weight: 800; }
@@ -81,6 +82,7 @@
   <div id="score"><span class="e">Ember 0</span> — <span class="a">0 Ash</span></div>
   <div id="bomb-timer">BOMB 35s</div>
 </div>
+<div id="defuse-warning"></div>
 <div id="killfeed"></div>
 <div id="center-msg"></div>
 <div id="hint"></div>

@@ -97,7 +97,17 @@ export class Bot {
   respawn(spawn) {
     this.pos.set(spawn[0], 0, spawn[1]);
     this.hp = 100; this.alive = true; this.state = 'patrol';
-    this.target = null; this.lastKnown = null; this.path = null;
+    this.target = null; this.lastKnown = null; this.lastSeenAt = -99;
+    // Full transient reset: a timer or route carried over from last round
+    // would let a bot plant/defuse instantly or walk a dead route.
+    this.path = null; this.pathIdx = 0; this.pathTarget = null;
+    this.route = null; this.routeIdx = 0;
+    this.repathTimer = 0; this.stuckTimer = 0;
+    this.lastProgress.copy(this.pos);
+    this.heardAt = null; this.heardPos = null;
+    this.reactionAt = 0; this.burstLeft = 0; this.burstTimer = 0;
+    this.plantTimer = 0; this.defuseTimer = 0;
+    this.holdUntil = 0; this.walkPhase = Math.random() * 6;
     this.group.visible = true; this.group.position.copy(this.pos);
   }
 
@@ -242,10 +252,20 @@ export class Bot {
     this.sense(now, dt);
     const bomb = game.rounds.bomb;
     // Objective overrides: defenders defuse, attackers plant when site is free.
-    if (this.team === 'ash' && bomb.planted && this.state !== 'attack') this.state = 'defuse';
-    if (this.team === 'ember' && !bomb.planted && !game.rounds.carrierAlive(game) && this.state === 'patrol') {
-      // One friendly bot picks up the bomb task if the player is dead.
-      if (!game.player.alive && game.bots.emberAlive().length > 0 && game.bots.emberAlive()[0] === this) this.state = 'plant';
+    // Defuse duty goes to the two nearest living Ash bots; the rest keep
+    // fighting. When the bomb is about to blow (<10 s), every living Ash bot
+    // rushes the defuse, even mid-fight: a bomb that detonates while
+    // defenders are alive and shooting is a lost round, not a tactic.
+    if (this.team === 'ash' && bomb.planted) {
+      const urgent = bomb.timer < 10;
+      const assigned = urgent || game.bots.defuseAssignees().includes(this);
+      if (assigned && this.state !== 'defuse') this.state = 'defuse';
+      if (!assigned && this.state === 'defuse') this.state = 'patrol';
+    }
+    // If the player (the bomb carrier) is dead, the first living Ember bot
+    // takes the plant: otherwise a dead carrier ends the objective entirely.
+    if (this.team === 'ember' && !bomb.planted && !game.player.alive && this.state === 'patrol') {
+      if (game.bots.emberAlive()[0] === this) this.state = 'plant';
     }
     switch (this.state) {
       case 'patrol': {
@@ -349,5 +369,14 @@ export class BotManager {
   }
   emberAlive() { return this.list.filter((b) => b.team === 'ember' && b.alive); }
   ashAlive() { return this.list.filter((b) => b.team === 'ash' && b.alive); }
+  // The two living Ash bots nearest the planted bomb own the defuse.
+  defuseAssignees() {
+    const bomb = this.game.rounds.bomb;
+    if (!bomb.planted) return [];
+    return this.list
+      .filter((b) => b.team === 'ash' && b.alive)
+      .sort((a, b) => Math.hypot(a.pos.x - bomb.x, a.pos.z - bomb.z) - Math.hypot(b.pos.x - bomb.x, b.pos.z - bomb.z))
+      .slice(0, 2);
+  }
   update(now, dt) { for (const b of this.list) b.update(now, dt, this.game); }
 }

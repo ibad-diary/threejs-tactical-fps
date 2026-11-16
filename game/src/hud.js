@@ -11,7 +11,7 @@ export class HUD {
       roundEnd: $('round-end'), roundEndText: $('round-end-text'),
       matchEnd: $('match-end'), matchEndText: $('match-end-text'),
       plantBar: $('plant-bar'), plantFill: $('plant-fill'), plantLabel: $('plant-label'),
-      bombTimer: $('bomb-timer'), hint: $('hint'),
+      bombTimer: $('bomb-timer'), hint: $('hint'), defuseWarn: $('defuse-warning'),
     };
     this.msgTimer = 0;
     this.killfeedItems = [];
@@ -107,4 +107,9 @@ export class HUD {
     this.el.plantLabel.textContent = label;
   }
   setHint(t) { this.el.hint.textContent = t; }
+  // Shown while an Ash bot is channeling the defuse; empty hides it.
+  setDefuseWarning(t) {
+    this.el.defuseWarn.textContent = t;
+    this.el.defuseWarn.style.display = t ? 'block' : 'none';
+  }
 }

@@ -57,7 +57,7 @@ export class Rounds {
       this.bomb.timer -= dt;
       this.bomb.beepTimer -= dt;
       if (this.bomb.beepTimer <= 0) { g.audio.beep(this.bomb.timer < 10 ? 1600 : 1100); this.bomb.beepTimer = this.bomb.timer < 10 ? 0.5 : 1; }
-      if (this.bomb.timer <= 0) { this.endRound('ember', 'Bomb detonated'); g.audio.explosion(); return; }
+      if (this.bomb.timer <= 0) { this.endRound('ember', 'Bomb detonated'); g.audio.explosion(); g.addTrauma(0.5); return; }
     }
     if (this.timer <= 0) {
       // Timer expiry: defenders win unless the bomb is planted (then bomb timer rules).
@@ -66,7 +66,10 @@ export class Rounds {
     }
     // Elimination check.
     if (g.player.alive === false && g.bots.emberAlive().length === 0) {
-      this.endRound('ash', 'Ember team eliminated');
+      // With the bomb planted the round plays on: detonation or defuse
+      // decides it. Ending here would let a planted bomb vanish with no
+      // winner, and would rob the defenders of their defuse.
+      if (!this.bomb.planted) this.endRound('ash', 'Ember team eliminated');
     } else if (g.bots.ashAlive().length === 0) {
       this.endRound('ember', 'Ash team eliminated');
     }

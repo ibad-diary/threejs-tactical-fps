@@ -2,12 +2,16 @@
 export class AudioSys {
   constructor() {
     this.ctx = null; this.muted = false; this.noiseBuf = null;
+    this.master = null; // every burst routes through this gain (measurable + one mute point)
   }
   ensure() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.9;
+    this.master.connect(this.ctx.destination);
     const len = this.ctx.sampleRate;
     this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
@@ -24,7 +28,7 @@ export class AudioSys {
     out.gain.setValueAtTime(0, t0);
     out.gain.linearRampToValueAtTime(gain, t0 + 0.005);
     out.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-    out.connect(this.ctx.destination);
+    out.connect(this.master || this.ctx.destination);
     if (this.noiseBuf) {
       const src = this.ctx.createBufferSource();
       src.buffer = this.noiseBuf; src.loop = true;
@@ -38,7 +42,7 @@ export class AudioSys {
       const g = this.ctx.createGain();
       g.gain.setValueAtTime(toneGain, t0);
       g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-      o.connect(g); g.connect(this.ctx.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+      o.connect(g); g.connect(this.master || this.ctx.destination); o.start(t0); o.stop(t0 + dur + 0.05);
     }
   }
 

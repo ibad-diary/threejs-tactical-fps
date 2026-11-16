@@ -124,6 +124,10 @@ class Game {
     this.plantProgress = 0; this.defuseProgress = 0;
     this.channelAnchor = null;
     this.acc = 0; this.lastT = performance.now();
+    this.stillTime = 0; // seconds the player has stood still (settles the aim)
+    this.hitStopUntil = 0; // real-time ms: sim frozen while now < this
+    this.trauma = 0; // decaying 0..1 shake energy (visual only, never moves bodies)
+    this.shakeT = 0;
 
     this.bindKeys();
     this.bindButtons();
@@ -163,6 +167,12 @@ class Game {
     g.position.set(0.28, -0.26, -0.55);
     return g;
   }
+
+  // Hit-stop: freeze the SIMULATION for `ms` real milliseconds (kill/headshot
+  // feedback). Only the newest call owns the restore; time is real, never scaled.
+  triggerHitStop(ms) { this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + ms); }
+  // Trauma shake: small, fast-decaying, camera-only. Hera's rule: keep it subtle.
+  addTrauma(a) { this.trauma = Math.min(1, this.trauma + a); }
 
   bindKeys() {
     this.input.onKey = (code) => {
@@ -235,6 +245,7 @@ class Game {
     if (!this.player.alive) return;
     this.player.takeDamage(amount);
     this.audio.hurt();
+    this.addTrauma(0.3);
     if (!this.player.alive) {
       this.hud.killfeed(attacker ? attacker.name : 'Ash', 'You', 'SK-9 "Scatter"', false);
       this.hud.message('You were eliminated', 2);
@@ -248,9 +259,13 @@ class Game {
       this.hud.showHitmarker(killed);
       if (killed) {
         this.audio.kill();
+        this.triggerHitStop(60); this.addTrauma(0.12); // kill: medium tier
         this.rounds.money += ECONOMY.killReward;
         this.hud.setMoney(this.rounds.money);
-      } else this.audio.hit();
+      } else {
+        this.audio.hit();
+        if (head) { this.triggerHitStop(30); this.addTrauma(0.05); }
+      }
     }
     if (killed) {
       this.hud.killfeed(isPlayer ? 'You' : shooter.name, victim.name, isPlayer ? this.weapons.def.name : 'SK-9 "Scatter"', head);
@@ -265,6 +280,7 @@ class Game {
       const origin = this.camera.getWorldPosition(_v2).clone();
       const dir = w.shotDirection(this.camera);
       this.audio.shot(w.def.kind);
+      this.addTrauma(0.03); // faint kick per shot; never stacks into nausea
       this.effects.muzzle(origin.clone().addScaledVector(dir, 0.6));
       const hit = shootHitscan(this, origin, dir, w.def, 'player');
       // Bot hearing: gunfire within 25 m.
@@ -321,17 +337,23 @@ class Game {
     const r = this.rounds;
     const frozen = r.phase === 'freeze' || r.phase === 'menu' || r.phase === 'ended' || r.phase === 'matchEnd';
     const moving = Math.hypot(this.player.vel.x, this.player.vel.z) > 0.5;
+    this.stillTime = moving ? 0 : this.stillTime + dt;
     this.player.update(dt, this.input, frozen || !this.started);
     if (this.player.stepped) { this.player.stepped = false; this.audio.step(); }
-    this.weapons.update(dt, moving);
+    this.weapons.update(dt, moving, this.player.crouching, this.stillTime);
     const ws = this.weapons.state;
     if (ws.reloading && this.now >= ws.reloadEnd) this.weapons.finishReload();
     if (this.started && this.player.alive && r.phase === 'live') this.playerShoot();
     this.updateChannel(dt);
     if (this.started) {
-      this.bots.update(this.now, dt);
+      // Bots only act while the round is live: freeze time is a real freeze,
+      // and nobody shoots after the round has ended.
+      if (r.phase === 'live') this.bots.update(this.now, dt);
       r.update(dt);
     }
+    // Defuse warning: an Ash bot channeling the defuse is the round's loudest fact.
+    const defuser = this.bots.list.find((b) => b.team === 'ash' && b.alive && b.state === 'defuse' && b.defuseTimer > 0);
+    this.hud.setDefuseWarning(defuser ? `⚠ ${defuser.name.toUpperCase()} IS DEFUSING THE BOMB!` : '');
     this.grenades.update(dt);
     this.effects.update(dt);
     // HUD refresh.
@@ -354,6 +376,14 @@ class Game {
     this.camera.rotation.y = p.yaw;
     this.camera.rotation.x = p.pitch + (this.weapons.state ? this.weapons.state.recoilPitch * 0.4 : 0);
     this.camera.rotation.z = 0;
+    // Trauma shake (camera only, summed sines, trauma^2 so light hits barely
+    // move it; decays in real time so it never freezes off-centre in hit-stop).
+    const shake = this.trauma * this.trauma;
+    if (shake > 0) {
+      this.camera.rotation.z = 0.012 * shake * Math.sin(this.shakeT * 1.1);
+      this.camera.position.x += 0.03 * shake * Math.sin(this.shakeT * 1.7);
+      this.camera.position.y += 0.02 * shake * Math.sin(this.shakeT * 2.3);
+    }
     // Viewmodel bob.
     const bob = Math.sin(this.now * 9) * 0.006 * Math.min(1, Math.hypot(p.vel.x, p.vel.z) / 5);
     this.viewmodel.position.y = -0.26 + bob;
@@ -365,6 +395,11 @@ class Game {
     requestAnimationFrame(this.loop);
     const frameDt = Math.min(0.25, (t - this.lastT) / 1000);
     this.lastT = t;
+    // Shake decays in REAL time (also during hit-stop) so it always returns to rest.
+    this.trauma = Math.max(0, this.trauma - 1.2 * frameDt);
+    this.shakeT += frameDt * 30;
+    // Hit-stop: freeze the simulation, keep rendering (frozen pose, live shake).
+    if (performance.now() < this.hitStopUntil) { this.render(); return; }
     this.acc += frameDt;
     let n = 0;
     while (this.acc >= STEP && n < 5) { this.step(STEP); this.acc -= STEP; n++; }
